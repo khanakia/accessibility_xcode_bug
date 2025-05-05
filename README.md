@@ -10,3 +10,8 @@
 systemWideElement: <AXUIElement System Wide 0x6000000ac8d0>
 focusedElement: nil
 ```
+
+
+
+https://github.com/user-attachments/assets/dc4461b7-ab13-468e-9d04-f5845b6a66e3
+
