@@ -1,0 +1,19 @@
+{
+	"name": "xcode build server",
+	"version": "0.2",
+	"bspVersion": "2.0",
+	"languages": [
+		"c",
+		"cpp",
+		"objective-c",
+		"objective-cpp",
+		"swift"
+	],
+	"argv": [
+		"/opt/homebrew/bin/xcode-build-server"
+	],
+	"workspace": "/Volumes/D/khanakia/Downloads/hello1/hello1.xcodeproj/project.xcworkspace",
+	"build_root": "/Volumes/D/khanakia/Library/Developer/Xcode/DerivedData/hello1-cdawujsvhuwzwybbltyxwoyrqnuc",
+	"scheme": "hello1",
+	"kind": "xcode"
+}

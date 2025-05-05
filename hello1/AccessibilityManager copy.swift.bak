@@ -1,0 +1,260 @@
+import Foundation
+import AppKit
+import SwiftUI
+
+class AccessibilityManager: ObservableObject {
+    @Published var capturedText: String = ""
+    @Published var isAccessibilityEnabled: Bool = false
+    @Published var debugInfo: String = ""
+    @Published var hasCompletedInitialCheck: Bool = false
+    private var eventMonitor: Any?
+    private var hasRequestedPermission = false
+    
+    init() {
+        print("AccessibilityManager initialized")
+        // Check accessibility immediately
+        checkAccessibility()
+    }
+    
+    func checkAccessibility() {
+        print("Checking accessibility...")
+        print("Current state - isAccessibilityEnabled: \(isAccessibilityEnabled), hasRequestedPermission: \(hasRequestedPermission)")
+        
+        // Only show the prompt if we haven't requested permission before
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: !hasRequestedPermission]
+        let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary)
+        
+        print("AXIsProcessTrustedWithOptions returned: \(accessEnabled)")
+        
+        hasRequestedPermission = true
+        
+        DispatchQueue.main.async {
+            print("Updating UI on main thread")
+            print("Previous isAccessibilityEnabled: \(self.isAccessibilityEnabled)")
+            self.isAccessibilityEnabled = accessEnabled
+            print("New isAccessibilityEnabled: \(self.isAccessibilityEnabled)")
+            
+            self.debugInfo = """
+            App Path: \(Bundle.main.bundlePath)
+            Process ID: \(ProcessInfo.processInfo.processIdentifier)
+            Accessibility Enabled: \(accessEnabled)
+            Bundle Identifier: \(Bundle.main.bundleIdentifier ?? "Unknown")
+            Has Requested Permission: \(self.hasRequestedPermission)
+            Previous State: \(self.isAccessibilityEnabled)
+            Current State: \(accessEnabled)
+            """
+            
+            if accessEnabled {
+                print("Accessibility enabled, setting up global shortcut")
+                self.setupGlobalShortcut()
+            } else {
+                print("Accessibility not enabled, opening System Preferences")
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+            }
+            
+            // Mark that we've completed the initial check
+            self.hasCompletedInitialCheck = true
+        }
+    }
+    
+    func setupGlobalShortcut() {
+        // Remove existing monitor if any
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+        
+        // Register for global keyboard shortcut (Control + J)
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.modifierFlags.contains(.control) && event.keyCode == 38 { // 38 is 'J'
+                self?.captureTextUnderCursor()
+//                let text1 = self?.getSelectedTextViaCopy()
+//                print("text1: \(text1)")
+                
+            }
+        }
+    }
+    
+    
+    func simulateCopyKeyPress() {
+        let source = CGEventSource(stateID: .hidSystemState)
+        
+        // Define the virtual keycode for 'C' and the command modifier
+        let commandKey = CGEventFlags.maskCommand.rawValue
+        let cKeyCode = CGKeyCode(8)  // Virtual keycode for 'C'
+        
+        // Create and post a key down event
+        if let commandCDown = CGEvent(keyboardEventSource: source, virtualKey: cKeyCode, keyDown: true) {
+            commandCDown.flags = CGEventFlags(rawValue: commandKey)
+            commandCDown.post(tap: .cghidEventTap)
+        }
+        
+        // Create and post a key up event
+        if let commandCUp = CGEvent(keyboardEventSource: source, virtualKey: cKeyCode, keyDown: false) {
+            commandCUp.flags = CGEventFlags(rawValue: commandKey)
+            commandCUp.post(tap: .cghidEventTap)
+        }
+    }
+    
+    
+    func getSelectedTextViaCopy(retryAttempts: Int = 1) -> String? {
+        
+        let pasteboard = NSPasteboard.general
+        let originalContents = pasteboard.pasteboardItems?.compactMap { $0.string(forType: .string) } ?? []
+        pasteboard.clearContents()
+        var attempts = 0
+        var newContent: String?
+        
+        while attempts < retryAttempts && newContent == nil {
+            simulateCopyKeyPress()
+            usleep(100000)
+            
+            newContent = pasteboard.string(forType: .string)
+            if let newContent = newContent, !newContent.isEmpty {
+                break
+            } else {
+                newContent = nil
+            }
+            attempts += 1
+        }
+        
+        if newContent == nil {
+            pasteboard.clearContents()
+            for item in originalContents {
+                pasteboard.setString(item, forType: .string)
+            }
+        }
+        
+        return newContent
+        
+        
+        print("via copy invocation")
+        DispatchQueue.main.async {
+            print("one", NSPasteboard.general.string(forType: .string))
+            sleep(1)
+            print("two", NSPasteboard.general.string(forType: .string))
+            sleep(1)
+            print("three", NSPasteboard.general.string(forType: .string))
+            sleep(1)
+            print("four", NSPasteboard.general.string(forType: .string))
+            
+        }
+
+        
+        return nil
+
+    }
+    
+    private func captureTextUnderCursor() {
+        let app = NSWorkspace.shared.frontmostApplication
+        print("app: \(String(describing: app))")
+
+        let pid = app?.processIdentifier
+        guard let pid = pid else {
+            print("No process ID found")
+            return
+        }
+
+        let capp = AXUIElementCreateApplication(pid)
+        print("capp: \(String(describing: capp))")
+
+        let attribute = "AXEnhancedUserInterface"
+        let value = kCFBooleanTrue
+        AXUIElementSetAttributeValue(capp, attribute as CFString, value as AnyObject)
+
+        let attribute1 = "AXManualAccessibility"
+        let value1 = kCFBooleanTrue
+        AXUIElementSetAttributeValue(capp, attribute1 as CFString, value1 as AnyObject)
+
+
+        let systemWideElement = AXUIElementCreateSystemWide()
+        print("systemWideElement: \(String(describing: systemWideElement))")
+
+    
+
+
+//        var focusedApp: AnyObject?
+//        AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedApplicationAttribute as CFString, &focusedApp)
+//        print("focusedApp: \(String(describing: focusedApp))")
+
+         var focusedElement: AnyObject?
+         AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+         print("focusedElement: \(String(describing: focusedElement))")
+
+        // let attribute2 = "AXFocusedUIElement"
+        // var focusedElement1: AnyObject?
+        // AXUIElementCopyAttributeValue(systemWideElement, attribute2 as CFString, &focusedElement1)
+        // print("focusedElement1: \(String(describing: focusedElement1))")
+
+
+        // var selectedText: AnyObject?
+        // AXUIElementCopyAttributeValue(focusedElement as! AXUIElement, kAXSelectedTextAttribute as CFString, &selectedText)
+
+        // print("selectedText: \(selectedText)")
+        
+        // // Get the currently focused element
+        // var focusedElement: AnyObject?
+        // if AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedUIElementAttribute as CFString, &focusedElement) == .success, let element = focusedElement as! AXUIElement? {
+        //     // Try to get selected text
+        //     var selectedText: AnyObject?
+        //     if AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedText) == .success,
+        //        let text = selectedText as? String, !text.isEmpty {
+        //         DispatchQueue.main.async {
+        //             self.capturedText = text
+        //             return
+        //         }
+        //     }
+            
+        //     // If no selected text, try to get the value
+        //     var value: AnyObject?
+        //     if AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success,
+        //        let text = value as? String, !text.isEmpty {
+        //         DispatchQueue.main.async {
+        //             self.capturedText = text
+        //             return
+        //         }
+        //     }
+        // }
+        
+        // // Fallback to mouse position if focused element didn't work
+        // let mouseLocation = NSEvent.mouseLocation
+        // let screenPoint = NSPoint(x: mouseLocation.x, y: NSScreen.main?.frame.height ?? 0 - mouseLocation.y)
+        
+        // // Get element at mouse position
+        // var element: AXUIElement?
+        // let error = AXUIElementCopyElementAtPosition(systemWideElement, Float(screenPoint.x), Float(screenPoint.y), &element)
+        
+        // if error == .success, let element = element {
+        //     // Try to get selected text
+        //     var selectedText: AnyObject?
+        //     if AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedText) == .success,
+        //        let text = selectedText as? String, !text.isEmpty {
+        //         DispatchQueue.main.async {
+        //             self.capturedText = text
+        //             return
+        //         }
+        //     }
+            
+        //     // If no selected text, try to get the value
+        //     var value: AnyObject?
+        //     if AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success,
+        //        let text = value as? String, !text.isEmpty {
+        //         DispatchQueue.main.async {
+        //             self.capturedText = text
+        //             return
+        //         }
+        //     }
+        // }
+        
+        // // If nothing was captured, show a message
+        // DispatchQueue.main.async {
+        //     self.capturedText = "No text could be captured at this location"
+        // }
+    }
+    
+    deinit {
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+} 
