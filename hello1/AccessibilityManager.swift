@@ -2,26 +2,6 @@ import Foundation
 import AppKit
 import SwiftUI
 
-extension AXUIElement {
-    func value(forAttribute attribute: String) -> CFTypeRef? {
-        var value: CFTypeRef?
-        let err = AXUIElementCopyAttributeValue(self, attribute as CFString, &value)
-        print(err.rawValue) // -25205 here
-        return value
-    }
-    
-    var selectedTextRange: CFRange? {
-        let val = value(forAttribute: kAXSelectedTextRangeAttribute)
-        guard let val else {return nil}
-        let v = val as! AXValue
-        precondition(AXValueGetType(v) == .cfRange)
-        var range = CFRange()
-        let done = AXValueGetValue(v, .cfRange, &range)
-        precondition(done)
-        return range
-    }
-}
-
 class AccessibilityManager: ObservableObject {
     @Published var capturedText: String = ""
     @Published var isAccessibilityEnabled: Bool = false
